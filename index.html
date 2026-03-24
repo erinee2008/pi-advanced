@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extreme Fractal Matrix</title>
+    <title>Extreme Fractal Matrix - 1 Million Digits</title>
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
@@ -29,6 +29,228 @@
 </head>
 <body>
 
+    <div id="ui">
+        <strong>Extreme Fractal Matrix</strong><br><br>
+        Currently visualizing 18 Rings (1,000,000+ nodes).<br>
+        Scroll to Zoom | Click & Drag to Pan<br>
+        <hr style="border: 0; border-top: 1px solid #ccc; margin: 10px 0;">
+        <label>Adjust Rings: <input type="number" id="ringInput" value="18" min="1" max="18" style="width: 50px;"></label><br>
+        <div id="status" style="color: #1976d2;">Auto-fetching Pi data...</div>
+        <div class="warning">Note: Text rendering turns off when zoomed out to save processing power.</div>
+        
+        <br><span style="font-size: 0.8em; color: #666;">Manual Fallback Upload:</span><br>
+        <input type="file" id="fileInput" accept=".txt" style="font-size: 0.8em;">
+    </div>
+
+    <canvas id="fractalCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('fractalCanvas');
+        const ctx = canvas.getContext('2d');
+        const fileInput = document.getElementById('fileInput');
+        const ringInput = document.getElementById('ringInput');
+        const statusDiv = document.getElementById('status');
+
+        let PI_STRING = "";
+        let MAX_RINGS = 18; 
+        const RING_SPACING = 200; 
+        const BASE_NODE_RADIUS = 16;
+
+        let scale = 0.02; // Start very zoomed out for the 18-ring view
+        let panX = window.innerWidth / 2;
+        let panY = window.innerHeight / 2;
+        let isDragging = false;
+        let startDragX = 0, startDragY = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            if (PI_STRING.length > 0) requestAnimationFrame(draw);
+        }
+        window.addEventListener('resize', resize);
+
+        // --- Auto-Fetch Logic ---
+        // This attempts to automatically load the pi_1M.txt file from the same folder
+        fetch('pi_1M.txt')
+            .then(response => {
+                if (!response.ok) throw new Error("Network response was not ok");
+                return response.text();
+            })
+            .then(text => {
+                PI_STRING = text.replace(/[^0-9]/g, '');
+                statusDiv.innerText = `Success! Auto-loaded ${PI_STRING.length.toLocaleString()} digits.`;
+                statusDiv.style.color = "#388e3c";
+                requestAnimationFrame(draw);
+            })
+            .catch(error => {
+                statusDiv.innerText = "Auto-fetch failed. Please use manual upload.";
+                statusDiv.style.color = "#d32f2f";
+            });
+
+        // --- Manual File Upload Logic (Fallback) ---
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            statusDiv.innerText = "Reading file...";
+            statusDiv.style.color = "#000";
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                PI_STRING = e.target.result.replace(/[^0-9]/g, '');
+                MAX_RINGS = parseInt(ringInput.value);
+                statusDiv.innerText = `Success! Loaded ${PI_STRING.length.toLocaleString()} digits.`;
+                statusDiv.style.color = "#388e3c";
+                scale = 0.02; panX = window.innerWidth / 2; panY = window.innerHeight / 2;
+                requestAnimationFrame(draw);
+            };
+            reader.readAsText(file);
+        });
+
+        ringInput.addEventListener('change', () => {
+            if (PI_STRING.length > 0) {
+                MAX_RINGS = parseInt(ringInput.value);
+                requestAnimationFrame(draw);
+            }
+        });
+
+        // --- Optimized Drawing Logic ---
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const buffer = RING_SPACING; 
+            const viewLeft = (-panX / scale) - buffer;
+            const viewRight = ((canvas.width - panX) / scale) + buffer;
+            const viewTop = (-panY / scale) - buffer;
+            const viewBottom = ((canvas.height - panY) / scale) + buffer;
+
+            ctx.save();
+            ctx.translate(panX, panY);
+            ctx.scale(scale, scale);
+
+            const drawText = scale > 0.4;
+            const drawNodes = scale > 0.08;
+            
+            ctx.strokeStyle = '#cccccc';
+            ctx.lineWidth = 1.5 / scale;
+
+            let nodeCount = 1; 
+
+            for (let r = 1; r <= MAX_RINGS; r++) {
+                const numNodes = Math.pow(2, r + 1);
+                const radius = r * RING_SPACING;
+
+                for (let i = 0; i < numNodes; i++) {
+                    const angle = (i / numNodes) * 2 * Math.PI;
+                    const x = radius * Math.cos(angle);
+                    const y = radius * Math.sin(angle);
+
+                    if (x < viewLeft || x > viewRight || y < viewTop || y > viewBottom) {
+                        nodeCount++;
+                        continue;
+                    }
+
+                    let pX = 0, pY = 0;
+                    if (r > 1) {
+                        const parentIndex = Math.floor(i / 2);
+                        const parentNodes = Math.pow(2, r);
+                        const parentRadius = (r - 1) * RING_SPACING;
+                        const parentAngle = (parentIndex / parentNodes) * 2 * Math.PI;
+                        pX = parentRadius * Math.cos(parentAngle);
+                        pY = parentRadius * Math.sin(parentAngle);
+                    }
+
+                    ctx.beginPath();
+                    ctx.moveTo(pX, pY);
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+
+                    if (drawNodes) {
+                        ctx.beginPath();
+                        ctx.arc(x, y, BASE_NODE_RADIUS, 0, 2 * Math.PI);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fill();
+                        ctx.strokeStyle = '#000000';
+                        ctx.lineWidth = 1.5 / scale;
+                        ctx.stroke();
+                    } else {
+                        ctx.beginPath();
+                        ctx.arc(x, y, 4 / scale, 0, 2 * Math.PI);
+                        ctx.fillStyle = '#666';
+                        ctx.fill();
+                    }
+
+                    if (drawText) {
+                        ctx.fillStyle = '#000000'; 
+                        ctx.font = '16px monospace';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(PI_STRING[nodeCount], x, y);
+                    }
+                    
+                    nodeCount++;
+                }
+            }
+
+            if (0 >= viewLeft && 0 <= viewRight && 0 >= viewTop && 0 <= viewBottom && PI_STRING.length > 0) {
+                if (drawNodes) {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, BASE_NODE_RADIUS, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 1.5 / scale;
+                    ctx.stroke();
+                    if (drawText) {
+                        ctx.fillStyle = '#000000';
+                        ctx.fillText(PI_STRING[0], 0, 0);
+                    }
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // --- Interaction Listeners ---
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startDragX = e.clientX - panX;
+            startDragY = e.clientY - panY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            panX = e.clientX - startDragX;
+            panY = e.clientY - startDragY;
+            if (PI_STRING.length > 0) requestAnimationFrame(draw);
+        });
+
+        window.addEventListener('mouseup', () => { isDragging = false; });
+        window.addEventListener('mouseleave', () => { isDragging = false; });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSensitivity = 0.07;
+            const direction = e.deltaY > 0 ? -1 : 1;
+            const zoomFactor = 1 + direction * zoomSensitivity;
+
+            const mouseX = e.clientX;
+            const mouseY = e.clientY;
+
+            panX = mouseX - (mouseX - panX) * zoomFactor;
+            panY = mouseY - (mouseY - panY) * zoomFactor;
+            scale *= zoomFactor;
+
+            if (scale < 0.005) scale = 0.005; 
+            if (scale > 5) scale = 5;
+
+            if (PI_STRING.length > 0) requestAnimationFrame(draw);
+        }, { passive: false });
+
+        resize();
+    </script>
+</body>
+</html>
     <div id="ui">
         <strong>Extreme Fractal Matrix</strong><br><br>
         1. Select a .txt file containing Pi digits.<br>

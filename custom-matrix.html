@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Pi Matrix - Real Digits</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #1e1e1e; color: white;
+            font-family: monospace;
+        }
+        canvas {
+            display: block; cursor: grab;
+        }
+        canvas:active {
+            cursor: grabbing;
+        }
+        #ui {
+            position: absolute; top: 10px; left: 10px;
+            background: rgba(0, 0, 0, 0.8); padding: 15px;
+            border-radius: 8px; border: 1px solid #444;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        button, input { margin-top: 10px; font-family: monospace; }
+        #status { margin-top: 10px; color: #4caf50; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <strong>Fractal Pi Matrix (Real Digits)</strong><br><br>
+        1. Select a .txt file containing Pi digits.<br>
+        2. Set your max rings.<br>
+        3. Scroll to Zoom | Click & Drag to Pan<br>
+        
+        <br>
+        <label>Max Rings: <input type="number" id="ringInput" value="12" min="1" max="15" style="width: 50px;"></label><br>
+        <input type="file" id="fileInput" accept=".txt"><br>
+        <div id="status">Waiting for file...</div>
+    </div>
+
+    <canvas id="fractalCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('fractalCanvas');
+        const ctx = canvas.getContext('2d');
+        const fileInput = document.getElementById('fileInput');
+        const ringInput = document.getElementById('ringInput');
+        const statusDiv = document.getElementById('status');
+
+        let PI_STRING = "";
+        let MAX_RINGS = 12; 
+        const RING_SPACING = 150; 
+        const NODE_RADIUS = 14;
+
+        // Camera settings
+        let scale = 1;
+        let panX = window.innerWidth / 2;
+        let panY = window.innerHeight / 2;
+        let isDragging = false;
+        let startDragX = 0, startDragY = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            if (PI_STRING.length > 0) draw();
+        }
+        window.addEventListener('resize', resize);
+
+        // --- File Reading Logic ---
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            statusDiv.innerText = "Reading file...";
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                // Remove the decimal point and any spaces/newlines
+                PI_STRING = e.target.result.replace(/[^0-9]/g, '');
+                MAX_RINGS = parseInt(ringInput.value);
+                
+                const requiredDigits = Math.pow(2, MAX_RINGS + 1) - 1;
+                
+                if (PI_STRING.length < requiredDigits) {
+                    statusDiv.innerText = `Error: File has ${PI_STRING.length} digits. Ring ${MAX_RINGS} requires ${requiredDigits} digits.`;
+                    statusDiv.style.color = "#ff5252";
+                } else {
+                    statusDiv.innerText = `Success! Loaded ${PI_STRING.length} digits. Drawing Matrix...`;
+                    statusDiv.style.color = "#4caf50";
+                    // Reset camera
+                    scale = 1; panX = window.innerWidth / 2; panY = window.innerHeight / 2;
+                    draw();
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Update rings on the fly if data is loaded
+        ringInput.addEventListener('change', () => {
+            if (PI_STRING.length > 0) {
+                MAX_RINGS = parseInt(ringInput.value);
+                draw();
+            }
+        });
+
+        // --- Drawing Logic ---
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(panX, panY);
+            ctx.scale(scale, scale);
+
+            let nodeCount = 0;
+
+            // 1. Draw Connections (Lines)
+            ctx.beginPath();
+            for (let r = 1; r <= MAX_RINGS; r++) {
+                const numNodes = Math.pow(2, r + 1);
+                const radius = r * RING_SPACING;
+
+                for (let i = 0; i < numNodes; i++) {
+                    const angle = (i / numNodes) * 2 * Math.PI;
+                    const x = radius * Math.cos(angle);
+                    const y = radius * Math.sin(angle);
+
+                    let pX = 0, pY = 0;
+                    if (r > 1) {
+                        const parentIndex = Math.floor(i / 2);
+                        const parentNodes = Math.pow(2, r);
+                        const parentRadius = (r - 1) * RING_SPACING;
+                        const parentAngle = (parentIndex / parentNodes) * 2 * Math.PI;
+                        pX = parentRadius * Math.cos(parentAngle);
+                        pY = parentRadius * Math.sin(parentAngle);
+                    }
+
+                    ctx.moveTo(pX, pY);
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.strokeStyle = '#555555';
+            ctx.lineWidth = 1.5 / scale;
+            ctx.stroke();
+
+            // 2. Draw Nodes (Circles and Text)
+            nodeCount = 0;
+            drawNode(0, 0, PI_STRING[nodeCount++]); // Center Node
+
+            for (let r = 1; r <= MAX_RINGS; r++) {
+                const numNodes = Math.pow(2, r + 1);
+                const radius = r * RING_SPACING;
+
+                for (let i = 0; i < numNodes; i++) {
+                    const angle = (i / numNodes) * 2 * Math.PI;
+                    const x = radius * Math.cos(angle);
+                    const y = radius * Math.sin(angle);
+                    
+                    drawNode(x, y, PI_STRING[nodeCount++]);
+                }
+            }
+            ctx.restore();
+        }
+
+        function drawNode(x, y, text) {
+            ctx.beginPath();
+            ctx.arc(x, y, NODE_RADIUS, 0, 2 * Math.PI);
+            ctx.fillStyle = '#2d2d2d';
+            ctx.fill();
+            ctx.strokeStyle = '#888888';
+            ctx.lineWidth = 2 / scale;
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '16px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, x, y);
+        }
+
+        // --- Interaction Listeners ---
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startDragX = e.clientX - panX;
+            startDragY = e.clientY - panY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            panX = e.clientX - startDragX;
+            panY = e.clientY - startDragY;
+            draw();
+        });
+
+        window.addEventListener('mouseup', () => { isDragging = false; });
+        window.addEventListener('mouseleave', () => { isDragging = false; });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSensitivity = 0.05;
+            const direction = e.deltaY > 0 ? -1 : 1;
+            const zoomFactor = 1 + direction * zoomSensitivity;
+
+            const mouseX = e.clientX;
+            const mouseY = e.clientY;
+
+            panX = mouseX - (mouseX - panX) * zoomFactor;
+            panY = mouseY - (mouseY - panY) * zoomFactor;
+            scale *= zoomFactor;
+
+            if (scale < 0.01) scale = 0.01; 
+            if (PI_STRING.length > 0) draw();
+        }, { passive: false });
+
+        resize();
+    </script>
+</body>
+</html>
